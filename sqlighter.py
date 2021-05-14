@@ -26,5 +26,21 @@ class SQlighter:
         with self.connection:
             return self.cursor.execute("SELECT * FROM subs WHERE status = ?", (status,)).fetchall()
 
+    # получаем данные пользователя по запросу
+    def get_sub(self, user_id):
+        with self.connection:
+            return self.cursor.execute("SELECT * FROM subs WHERE user_id = ?", (user_id,)).fetchall()
+
+    # устанавливаем логин для пользователя
+    def set_login(self, user_id, user_login, status = True):
+        with self.connection:
+            return self.cursor.execute("UPDATE subs SET user_login = ?, status = ? WHERE user_id = ?",(user_login, status, user_id))
+    
+    # устанавливаем время рассылки пользователя
+    def set_time(self, user_id, user_time):
+        with self.connection:
+            return self.cursor.execute("UPDATE subs SET user_time = ? WHERE user_id = ?",(user_time, user_id))
+
+    # закрываем соединение
     def close(self):
         self.connection.close()
