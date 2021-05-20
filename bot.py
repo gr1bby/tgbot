@@ -1,13 +1,13 @@
+# -*- coding: utf-8 -*-
+
 import config
 import keyboard as kb
 
-import requests
 import asyncio
 import logging
 import time
 import pytz
 
-from io import StringIO
 from datetime import datetime, timedelta
 from multiprocessing import Process
 
@@ -18,6 +18,8 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils import executor
 
 from sqlighter import SQlighter
+from schedule import Schedule
+from mystates import MyStates
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,11 +33,6 @@ dp = Dispatcher(bot, storage=storage)
 loop = asyncio.get_event_loop()
 # создаем переменную для обращения к бд через класс
 db = SQlighter('db.db')
-
-class MyStates(StatesGroup):
-    log_state = State() # состояние для обработки ввода логина
-    date_state = State() # состояние для обработки ввода даты
-    time_state = State() # состояние для обработки ввода времени
 
 # приветствующая команда
 @dp.message_handler(commands=['start'])
@@ -142,7 +139,7 @@ async def set_log(message: types.Message, state: FSMContext):
         data['text'] = message.text
         usr_login = data['text']
         
-        if bool(check_login(usr_login)):
+        if bool(Schedule.check_login(Schedule.get_studentID, usr_login)):
             if not db.subscriber_exists(message.from_user.id):
                 db.add_subscriber(message.from_user.id)
             db.set_login(message.from_user.id, usr_login)
@@ -192,8 +189,8 @@ async def set_date(message: types.Message, state: FSMContext):
         sub = db.get_sub(message.from_user.id)
 
         login = sub[0][2]
-        ID = get_studentID(login)
-        schedule = get_schedule(ID, usr_date)
+        ID = Schedule.get_studentID(login)
+        schedule = Schedule.get_schedule(ID, usr_date)
 
         if isinstance(schedule, str) and bool(schedule):
             answ = f"Расписание на {usr_date}:\n{schedule}"
@@ -381,60 +378,6 @@ async def msg_asnw(message: types.Message):
             reply_markup=kb.markup_help
         )
 
-# получаем ID студента
-def get_studentID(login):
-    try:
-        r = requests.get(
-            f"http://api.grsu.by/1.x/app2/getStudent?login={login}"
-        )
-        data = r.json()
-        return data["id"]
-    except Exception:
-        pass
-
-# получаем расписание
-def get_schedule(ID, date):                 
-    try:
-        r = requests.get(
-            f"http://api.grsu.by/1.x/app2/getGroupSchedule?studentId={ID}&dateStart={date}&dateEnd={date}"
-        )
-        data = r.json()
-
-        try:
-            if data["error"]["code"] == "24004" or data["error"]["code"] == "24005":
-                error = int(data["error"]["code"])
-                return error
-        except Exception:
-            pass
-
-        try:
-            if data["count"] == 0:
-                return 0
-        except Exception:
-            pass
-
-        count_of_lessons = data["days"][0]["count"]
-        res = StringIO()
-        for i in range(count_of_lessons):
-            title = data["days"][0]["lessons"][i]["title"]
-            typeOfLesn = data["days"][0]["lessons"][i]["type"]
-            timeStart = data["days"][0]["lessons"][i]["timeStart"]
-            teacher = data["days"][0]["lessons"][i]["teacher"]["fullname"]
-            room = data["days"][0]["lessons"][i]["room"]
-            address = data["days"][0]["lessons"][i]["address"]
-            schedule = f"\n{timeStart}: {title} ({typeOfLesn});\n{teacher};\n{address}, {room}\n"
-            res.write(schedule)
-        return res.getvalue()
-    except Exception as ex:
-        print(ex)
-        
-# проверяем, существующий ли логин был введен
-def check_login(login):
-    if get_studentID(login) > 0:
-        return True
-    else:
-        return False
-
 # основной цикл бота, который рассылает расписание
 async def msging(wait_for):
     while True:
@@ -454,14 +397,14 @@ async def msging(wait_for):
             split_time = "15.00"
             if usr_time < split_time and current_time == usr_time:
                 login = sub[2]
-                ID = get_studentID(login)
-                schedule = get_schedule(ID, current_date)
+                ID = Schedule.get_studentID(login)
+                schedule = Schedule.get_schedule(ID, current_date)
                 if isinstance(schedule, str) and bool(schedule):
                     await bot.send_message(sub[1], f"Расписание на сегодня:\n{schedule}")
             elif usr_time >= split_time and current_time == usr_time:
                 login = sub[2]
-                ID = get_studentID(login)
-                schedule = get_schedule(ID, tomorrow_date)
+                ID = Schedule.get_studentID(login)
+                schedule = Schedule.get_schedule(ID, tomorrow_date)
                 if isinstance(schedule, str) and bool(schedule):
                     await bot.send_message(sub[1], f"Расписание на завтра:\n{schedule}")
 
